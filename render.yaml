@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: willhaben-flipper
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    healthCheckPath: /
+    envVars:
+      # Secrets: set these in the Render dashboard (they are NOT stored here).
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      # Non-secret config.
+      - key: OPENROUTER_MODEL
+        value: "dots-studio/dots-3-note-preview:free,z-ai/glm-5.2:free,poolside/laguna-s-2.1:free"
+      - key: VISION_MODELS
+        value: "dots-studio/dots-3-note-preview:free"
+      - key: WILLHABEN_URL
+        value: "https://www.willhaben.at/iad/kaufen-und-verkaufen/zu-verschenken/marktplatz?sfId=188bc8f2-24d3-4bc4-9a7c-acead7e55731&rows=30&isNavigation=true&areaId=900&page=1&PRICE_FROM=0&PRICE_TO=0"
+      - key: LOOP_INTERVAL
+        value: "10"
+      - key: MIN_RESALE_SCORE
+        value: "8"
+      - key: MAX_LLM_CALLS_PER_RUN
+        value: "30"
+      - key: LLM_REQUEST_DELAY
+        value: "3"
