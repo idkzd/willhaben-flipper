@@ -24,7 +24,7 @@ def _build_caption(advert: dict[str, Any], evaluation: dict[str, Any]) -> str:
     lines = [
         f"🟢 <b>{title}</b>",
         f"📍 {location}",
-        f"💰 Оцінка перепродажу: <b>{score}/10</b> ({potential}) — орієнтовно <b>{price} €</b>",
+        f"💰 Оцінка перепродажу: <b>{score} з 10</b> ({potential}) — орієнтовно <b>{price} €</b>",
     ]
     if reasoning:
         lines.append(f"ℹ️ Чому вигідно: <i>{reasoning}</i>")
