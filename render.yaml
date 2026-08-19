@@ -22,7 +22,7 @@ services:
       - key: LOOP_INTERVAL
         value: "10"
       - key: MIN_RESALE_SCORE
-        value: "8"
+        value: "7"
       - key: MAX_LLM_CALLS_PER_RUN
         value: "30"
       - key: LLM_REQUEST_DELAY

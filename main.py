@@ -175,7 +175,7 @@ def main() -> int:
         "&areaId=900&page=1&PRICE_FROM=0&PRICE_TO=0",
     )
     args.pages = config.get_int("PAGES", 1)
-    args.min_score = config.get_int("MIN_RESALE_SCORE", 8)
+    args.min_score = config.get_int("MIN_RESALE_SCORE", 7)
     args.max_llm_calls = config.get_int("MAX_LLM_CALLS_PER_RUN", 30)
     args.llm_delay = config.get_int("LLM_REQUEST_DELAY", 2)
     args.loop_interval = args.loop if args.loop else config.get_int("LOOP_INTERVAL", 10)
