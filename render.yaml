@@ -12,8 +12,6 @@ services:
         sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
-      - key: TELEGRAM_CHAT_ID
-        sync: false
       # Non-secret config.
       - key: OPENROUTER_MODEL
         value: "dots-studio/dots-3-note-preview:free,z-ai/glm-5.2:free,poolside/laguna-s-2.1:free"

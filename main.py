@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Parse new willhaben "Zu verschenken" ads, score resale via OpenRouter,
-and send the promising ones to Telegram.
+and broadcast the promising ones to every Telegram user who sent /start.
 
 Usage:
     python3 main.py             # poll continuously (default every 10 s)
@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 import config
 import evaluate
 import keep_alive
-import notify
+import telegram_bot
 import willhaben
 
 STATE_FILE = Path(__file__).resolve().parent / "state.json"
@@ -119,16 +119,18 @@ def process_once(args: argparse.Namespace, seen: set[str], verbose: bool = True)
 
         if score >= args.min_score or potential == "very_good":
             if args.dry_run:
-                print(f"   ✅ [DRY-RUN] відправив би в Telegram: {advert['url']}")
-            else:
-                notify.send(
-                    advert,
-                    evaluation,
-                    args.telegram_bot_token,
-                    args.telegram_chat_id,
+                subs = len(telegram_bot.subscribers())
+                print(
+                    f"   ✅ [DRY-RUN] відправив би {subs} підписникам: {advert['url']}",
+                    flush=True,
                 )
-                print("   ✅ Надіслано в Telegram", flush=True)
-            sent += 1
+                sent += 1
+            else:
+                count = telegram_bot.broadcast(
+                    advert, evaluation, args.telegram_bot_token
+                )
+                print(f"   ✅ Надіслано {count} підписникам у Telegram", flush=True)
+                sent += count
 
         seen.add(advert_id)
 
@@ -183,13 +185,12 @@ def main() -> int:
         "google/gemma-4-26b-a4b-it:free,google/gemma-4-31b-it:free,z-ai/glm-5.2:free",
     )
     args.telegram_bot_token = config.get("TELEGRAM_BOT_TOKEN")
-    args.telegram_chat_id = config.get("TELEGRAM_CHAT_ID")
 
     if not args.openrouter_api_key:
         print("❌ Відсутній OPENROUTER_API_KEY у .env", file=sys.stderr)
         return 1
-    if not args.dry_run and (not args.telegram_bot_token or not args.telegram_chat_id):
-        print("❌ Відсутні TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID у .env", file=sys.stderr)
+    if not args.dry_run and not args.telegram_bot_token:
+        print("❌ Відсутній TELEGRAM_BOT_TOKEN у .env", file=sys.stderr)
         return 1
 
     verify_vienna_filter(args.willhaben_url)
@@ -205,6 +206,9 @@ def main() -> int:
         "(Ctrl+C для виходу)",
         flush=True,
     )
+    if not args.dry_run:
+        telegram_bot.start_polling(args.telegram_bot_token)
+        print("🤖 Telegram-бот слухає /start та /stop", flush=True)
     try:
         while True:
             sent = process_once(args, seen, verbose=False)

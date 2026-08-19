@@ -1,5 +1,6 @@
 .env
 state.json
+subscribers.json
 __pycache__/
 *.pyc
 .venv/
