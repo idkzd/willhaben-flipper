@@ -2,9 +2,11 @@ name: keepalive
 
 on:
   schedule:
-    # Every 10 minutes — Render free web services spin down after ~15 min
-    # without inbound HTTP traffic, so this keeps the bot awake 24/7.
-    - cron: "*/10 * * * *"
+    # Render free web services spin down after ~15 min without inbound HTTP.
+    # GitHub Actions schedules are best-effort and can be delayed, so we use two
+    # overlapping 5-minute patterns to keep the gap well under the sleep window.
+    - cron: "*/5 * * * *"
+    - cron: "2-57/5 * * * *"
   workflow_dispatch: {}
 
 jobs:
@@ -12,4 +14,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Render service
-        run: curl -fsS -o /dev/null --retry 3 https://willhaben-flipper.onrender.com/
+        # --connect-timeout/--max-time keep a slow cold start from hanging;
+        # retries with a delay give the instance time to boot before the next try.
+        run: >
+          curl -fsS -o /dev/null
+          --connect-timeout 15
+          --max-time 60
+          --retry 4
+          --retry-delay 15
+          --retry-all-errors
+          https://willhaben-flipper.onrender.com/
