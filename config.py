@@ -28,3 +28,14 @@ def get_int(key: str, default: int) -> int:
         return int(os.environ.get(key, ""))
     except ValueError:
         return default
+
+
+def get_list(key: str, default: str = "") -> list[str]:
+    """Parse a comma-separated env var into a de-duplicated list of values."""
+    raw = os.environ.get(key, default)
+    seen: list[str] = []
+    for item in raw.split(","):
+        item = item.strip()
+        if item and item not in seen:
+            seen.append(item)
+    return seen

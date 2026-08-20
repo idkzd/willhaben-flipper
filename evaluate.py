@@ -5,14 +5,20 @@ so it also receives the advert's first photo for a more accurate call. If it
 is rate-limited/unavailable, we fall back to the text-only models in the list
 (no photo for those).
 
-Free OpenRouter models are frequently rate-limited (HTTP 429), so every
-request retries with exponential backoff and falls back to the next model.
+Free OpenRouter models are frequently rate-limited (HTTP 429), and each
+OpenRouter account also has its own daily free-tier request quota. To work
+around both, requests are spread across a pool of API keys (see
+``config.get_list("OPENROUTER_API_KEYS")``) via :class:`KeyPool`, which
+round-robins keys and parks any key that hits its daily limit until it
+resets. Each request also retries with exponential backoff and falls back
+to the next model.
 """
 import base64
 import json
 import os
 import random
 import re
+import threading
 import time
 from typing import Any
 
@@ -22,6 +28,7 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 RETRIES_PER_MODEL = 4
 BACKOFF_BASE = 2.0
 RETRYABLE_STATUS = (429, 500, 502, 503, 504)
+DEFAULT_EXHAUSTION_COOLDOWN = 3600.0  # fallback if the API doesn't send a reset time
 
 DEFAULT_VISION_MODELS = "dots-studio/dots-3-note-preview:free"
 
@@ -48,6 +55,82 @@ SYSTEM_PROMPT = (
     "оголошення з правильним артиклем і займенником (die Lampe → sie, der Tisch "
     "→ ihn, das Sofa → es). Жодних офіційних формулювань, жодних 'Sehr geehrte'."
 )
+
+
+class KeyPool:
+    """Round-robins across multiple OpenRouter API keys.
+
+    Each key has its own daily free-tier quota, so spreading requests across
+    several accounts' keys multiplies the effective daily allowance. A key
+    that comes back HTTP 429 for the free-tier daily limit is parked until
+    its reported reset time (or a 1h cooldown if none is given) and skipped
+    until then.
+    """
+
+    def __init__(self, keys: list[str]):
+        if not keys:
+            raise ValueError("KeyPool needs at least one API key")
+        self._keys = list(dict.fromkeys(keys))  # de-dupe, keep order
+        self._index = 0
+        self._exhausted_until: dict[str, float] = {}
+        self._lock = threading.Lock()
+
+    def size(self) -> int:
+        return len(self._keys)
+
+    @staticmethod
+    def label(key: str) -> str:
+        return f"...{key[-4:]}" if len(key) > 4 else "key"
+
+    def _available(self, key: str) -> bool:
+        until = self._exhausted_until.get(key)
+        return until is None or time.time() >= until
+
+    def mark_exhausted(self, key: str, reset_at: float | None) -> None:
+        with self._lock:
+            self._exhausted_until[key] = reset_at or (
+                time.time() + DEFAULT_EXHAUSTION_COOLDOWN
+            )
+            remaining = sum(1 for k in self._keys if self._available(k))
+        print(
+            f"🔑 Ключ {self.label(key)} вичерпано (rate limit). "
+            f"Доступно ще {remaining}/{len(self._keys)} ключів.",
+            flush=True,
+        )
+
+    def next_key(self) -> str | None:
+        """Return the next available key (round robin), or None if all are
+        currently exhausted."""
+        with self._lock:
+            n = len(self._keys)
+            for _ in range(n):
+                key = self._keys[self._index]
+                self._index = (self._index + 1) % n
+                if self._available(key):
+                    return key
+            return None
+
+
+def _parse_reset_epoch(resp: requests.Response) -> float | None:
+    """Best-effort extraction of the rate-limit reset time (epoch seconds)."""
+    header_val = resp.headers.get("X-RateLimit-Reset")
+    if not header_val:
+        try:
+            body = resp.json()
+            header_val = (
+                body.get("error", {})
+                .get("metadata", {})
+                .get("headers", {})
+                .get("X-RateLimit-Reset")
+            )
+        except ValueError:
+            header_val = None
+    if not header_val:
+        return None
+    try:
+        return float(header_val) / 1000.0  # OpenRouter sends milliseconds
+    except (TypeError, ValueError):
+        return None
 
 
 def _parse_content(content: str) -> dict[str, Any]:
@@ -99,16 +182,21 @@ def _build_user_content(user_prompt: str, image_data_url: str | None) -> Any:
 
 def _try_model(
     model: str,
-    api_key: str,
+    key_pool: KeyPool,
     user_content: Any,
     timeout: int,
 ) -> dict[str, Any]:
     last_detail = "unknown error"
-    for attempt in range(RETRIES_PER_MODEL):
+    attempts = max(RETRIES_PER_MODEL, key_pool.size())
+    for attempt in range(attempts):
+        key = key_pool.next_key()
+        if key is None:
+            raise RuntimeError("all OpenRouter API keys are rate-limited")
+
         resp = requests.post(
             OPENROUTER_URL,
             headers={
-                "Authorization": f"Bearer {api_key}",
+                "Authorization": f"Bearer {key}",
                 "Content-Type": "application/json",
             },
             json={
@@ -130,16 +218,21 @@ def _try_model(
                 return _parse_content(content)
             except (ValueError, json.JSONDecodeError) as exc:
                 last_detail = f"bad reply: {exc}"
+        elif resp.status_code == 429:
+            reset_at = _parse_reset_epoch(resp)
+            key_pool.mark_exhausted(key, reset_at)
+            last_detail = f"HTTP 429 ({KeyPool.label(key)}): {resp.text[:200]}"
+            continue  # switch to the next key right away, no need to back off
         elif resp.status_code in RETRYABLE_STATUS:
             last_detail = f"HTTP {resp.status_code}: {resp.text[:300]}"
         else:
             resp.raise_for_status()
 
-        if attempt < RETRIES_PER_MODEL - 1:
+        if attempt < attempts - 1:
             time.sleep(BACKOFF_BASE ** attempt + random.uniform(0, 0.5))
 
     raise RuntimeError(
-        f"Model {model} failed after {RETRIES_PER_MODEL} tries ({last_detail})"
+        f"Model {model} failed after {attempts} tries ({last_detail})"
     )
 
 
@@ -155,7 +248,7 @@ def _fallback_seller_message(title: str) -> str:
 
 def evaluate(
     advert: dict[str, Any],
-    api_key: str,
+    key_pool: KeyPool,
     models: str,
     timeout: int = 90,
 ) -> dict[str, Any]:
@@ -190,7 +283,7 @@ def evaluate(
             content = _build_user_content(
                 user_prompt, image_data_url if model in vision_set else None
             )
-            result = _try_model(model, api_key, content, timeout)
+            result = _try_model(model, key_pool, content, timeout)
             if not (result.get("message_to_seller") or "").strip():
                 result["message_to_seller"] = _fallback_seller_message(
                     advert.get("title", "")

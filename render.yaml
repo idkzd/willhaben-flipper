@@ -10,6 +10,11 @@ services:
       # Secrets: set these in the Render dashboard (they are NOT stored here).
       - key: OPENROUTER_API_KEY
         sync: false
+      # Optional: more OpenRouter API keys (e.g. from other free-tier
+      # accounts), comma-separated, to round-robin around per-account daily
+      # free-tier rate limits. Combined with OPENROUTER_API_KEY above.
+      - key: OPENROUTER_API_KEYS
+        sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       # Non-secret config.

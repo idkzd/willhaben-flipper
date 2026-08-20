@@ -106,7 +106,7 @@ def process_once(args: argparse.Namespace, seen: set[str], verbose: bool = True)
 
         try:
             evaluation = evaluate.evaluate(
-                advert, args.openrouter_api_key, args.openrouter_model
+                advert, args.openrouter_keys, args.openrouter_model
             )
         except Exception as exc:  # noqa: BLE001 - never let one bad ad kill the bot
             print(
@@ -189,16 +189,29 @@ def main() -> int:
     args.max_llm_calls = config.get_int("MAX_LLM_CALLS_PER_RUN", 30)
     args.llm_delay = config.get_int("LLM_REQUEST_DELAY", 2)
     args.loop_interval = args.loop if args.loop else config.get_int("LOOP_INTERVAL", 10)
-    args.openrouter_api_key = config.get("OPENROUTER_API_KEY")
+
+    # Multiple OpenRouter API keys (e.g. from different free-tier accounts)
+    # can be supplied via OPENROUTER_API_KEYS as a comma-separated list, in
+    # addition to (or instead of) the single OPENROUTER_API_KEY. Requests are
+    # round-robined across all of them so one account's daily free-tier quota
+    # doesn't block the whole bot.
+    openrouter_keys = config.get_list("OPENROUTER_API_KEYS")
+    single_key = config.get("OPENROUTER_API_KEY", "").strip()
+    if single_key and single_key not in openrouter_keys:
+        openrouter_keys.insert(0, single_key)
     args.openrouter_model = config.get(
         "OPENROUTER_MODEL",
         "google/gemma-4-26b-a4b-it:free,google/gemma-4-31b-it:free,z-ai/glm-5.2:free",
     )
     args.telegram_bot_token = config.get("TELEGRAM_BOT_TOKEN")
 
-    if not args.openrouter_api_key:
-        print("❌ Відсутній OPENROUTER_API_KEY у .env", file=sys.stderr)
+    if not openrouter_keys:
+        print(
+            "❌ Відсутній OPENROUTER_API_KEY / OPENROUTER_API_KEYS у .env",
+            file=sys.stderr,
+        )
         return 1
+    args.openrouter_keys = evaluate.KeyPool(openrouter_keys)
     if not args.dry_run and not args.telegram_bot_token:
         print("❌ Відсутній TELEGRAM_BOT_TOKEN у .env", file=sys.stderr)
         return 1
