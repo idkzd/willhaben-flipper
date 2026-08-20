@@ -2,11 +2,10 @@ name: keepalive
 
 on:
   schedule:
-    # Render free web services spin down after ~15 min without inbound HTTP.
-    # GitHub Actions schedules are best-effort and can be delayed, so we use two
-    # overlapping 5-minute patterns to keep the gap well under the sleep window.
+    # Backup only. The bot itself pings its own URL every 5 minutes
+    # (keep_alive.py), so it normally never sleeps. This workflow just
+    # re-wakes the instance if it ever spins down (e.g. right after a deploy).
     - cron: "*/5 * * * *"
-    - cron: "2-57/5 * * * *"
   workflow_dispatch: {}
 
 jobs:
