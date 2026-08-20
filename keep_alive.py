@@ -47,7 +47,9 @@ def _self_ping_loop() -> None:
     """Ping our own public URL so Render never puts the instance to sleep."""
     url = os.environ.get("RENDER_EXTERNAL_URL", "").strip()
     if not url:
+        print("⚠️  RENDER_EXTERNAL_URL відсутній — self-ping вимкнено", flush=True)
         return  # local dev — nothing to keep awake
+    print(f"🔁 Self-ping увімкнено: {url} (кожні {SELF_PING_INTERVAL // 60} хв)", flush=True)
     while True:
         time.sleep(SELF_PING_INTERVAL)
         try:
