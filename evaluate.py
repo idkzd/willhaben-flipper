@@ -103,6 +103,7 @@ def _try_model(
     user_content: Any,
     timeout: int,
 ) -> dict[str, Any]:
+    last_detail = "unknown error"
     for attempt in range(RETRIES_PER_MODEL):
         resp = requests.post(
             OPENROUTER_URL,
@@ -127,17 +128,19 @@ def _try_model(
             content = choices[0].get("message", {}).get("content") if choices else None
             try:
                 return _parse_content(content)
-            except (ValueError, json.JSONDecodeError):
-                pass  # transient bad reply -> retry
+            except (ValueError, json.JSONDecodeError) as exc:
+                last_detail = f"bad reply: {exc}"
         elif resp.status_code in RETRYABLE_STATUS:
-            pass  # transient upstream error -> retry
+            last_detail = f"HTTP {resp.status_code}: {resp.text[:300]}"
         else:
             resp.raise_for_status()
 
         if attempt < RETRIES_PER_MODEL - 1:
             time.sleep(BACKOFF_BASE ** attempt + random.uniform(0, 0.5))
 
-    raise RuntimeError(f"Model {model} failed after {RETRIES_PER_MODEL} tries")
+    raise RuntimeError(
+        f"Model {model} failed after {RETRIES_PER_MODEL} tries ({last_detail})"
+    )
 
 
 def _fallback_seller_message(title: str) -> str:
