@@ -36,13 +36,17 @@ SYSTEM_PROMPT = (
     '"estimated_price_eur": "діапазон, напр. 20-40", "effort_to_flip": '
     '"low|medium|high", '
     '"reasoning": "українською: 1-2 речення, чому цю річ легко/вигідно перепродати", '
-    '"message_to_seller": "німецькою: коротке ввічливе повідомлення продавцю '
-    'з проханням забрати річ безкоштовно і домовитися про час та контакт"}\n\n'
+    '"message_to_seller": "німецькою: коротке неформальне дружнє повідомлення '
+    'продавцю (1-2 речення) з проханням забрати річ безкоштовно і домовитися про час"}\n\n'
     "resale_score — наскільки легко/вигідно перепродати (10 = майже гарантований "
     "швидкий і вигідний перепродаж). resale_potential=very_good лише якщо річ "
     "ліквідна, затребувана, в робочому/гарному стані й її реально продати за "
     "помітні гроші. Зламане, громіздке, вузькоспеціалізоване сміття = poor. "
-    "message_to_seller має бути ввічливим, природним, німецькою (Sie-форма)."
+    "message_to_seller має бути коротким, неформальним, природним, людяним, "
+    "німецькою. Стиль як у прикладі: 'Hallo! Ist die Lampe noch verfügbar? Ich "
+    "würde sie gerne nehmen 😊' — тільки замість Lampe підстав назву речі з "
+    "оголошення з правильним артиклем і займенником (die Lampe → sie, der Tisch "
+    "→ ihn, das Sofa → es). Жодних офіційних формулювань, жодних 'Sehr geehrte'."
 )
 
 
@@ -136,6 +140,16 @@ def _try_model(
     raise RuntimeError(f"Model {model} failed after {RETRIES_PER_MODEL} tries")
 
 
+def _fallback_seller_message(title: str) -> str:
+    """Short, informal German message in the style the user requested."""
+    t = (title or "").strip()
+    if not t:
+        return "Hallo! Ist der Artikel noch verfügbar? Ich würde ihn gerne nehmen 😊"
+    if len(t) > 60:
+        t = t[:60].rsplit(" ", 1)[0] + "…"
+    return f"Hallo! Ist „{t}“ noch verfügbar? Ich würde es gerne nehmen 😊"
+
+
 def evaluate(
     advert: dict[str, Any],
     api_key: str,
@@ -173,7 +187,12 @@ def evaluate(
             content = _build_user_content(
                 user_prompt, image_data_url if model in vision_set else None
             )
-            return _try_model(model, api_key, content, timeout)
+            result = _try_model(model, api_key, content, timeout)
+            if not (result.get("message_to_seller") or "").strip():
+                result["message_to_seller"] = _fallback_seller_message(
+                    advert.get("title", "")
+                )
+            return result
         except Exception as exc:  # noqa: BLE001 - try the next model
             last_error = exc
     raise RuntimeError(f"All models failed: {last_error}")
