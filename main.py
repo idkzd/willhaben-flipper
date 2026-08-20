@@ -104,9 +104,19 @@ def process_once(args: argparse.Namespace, seen: set[str], verbose: bool = True)
         if evaluated > 0 and args.llm_delay:
             time.sleep(args.llm_delay)
 
-        evaluation = evaluate.evaluate(
-            advert, args.openrouter_api_key, args.openrouter_model
-        )
+        try:
+            evaluation = evaluate.evaluate(
+                advert, args.openrouter_api_key, args.openrouter_model
+            )
+        except Exception as exc:  # noqa: BLE001 - never let one bad ad kill the bot
+            print(
+                f"⚠️  Не вдалося оцінити {advert['title'][:60]!r}: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+            evaluated += 1
+            seen.add(advert_id)
+            continue
         evaluated += 1
         score = evaluation.get("resale_score", 0)
         potential = evaluation.get("resale_potential", "")
@@ -211,9 +221,17 @@ def main() -> int:
         print("🤖 Telegram-бот слухає /start та /stop", flush=True)
     try:
         while True:
-            sent = process_once(args, seen, verbose=False)
-            stamp = time.strftime("%H:%M:%S")
-            print(f"[{stamp}] нових надіслано: {sent}", flush=True)
+            try:
+                sent = process_once(args, seen, verbose=False)
+                stamp = time.strftime("%H:%M:%S")
+                print(f"[{stamp}] нових надіслано: {sent}", flush=True)
+            except Exception as exc:  # noqa: BLE001 - keep the bot alive no matter what
+                stamp = time.strftime("%H:%M:%S")
+                print(
+                    f"[{stamp}] ⚠️  Помилка в циклі обробки: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
             time.sleep(args.loop_interval)
     except KeyboardInterrupt:
         print("\n👋 Зупинено")
