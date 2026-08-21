@@ -21,7 +21,14 @@ services:
       - key: OPENROUTER_MODEL
         value: "dots-studio/dots-3-note-preview:free,z-ai/glm-5.2:free,poolside/laguna-s-2.1:free"
       - key: VISION_MODELS
-        value: "dots-studio/dots-3-note-preview:free"
+        value: "dots-studio/dots-3-note-preview:free,mimo-v2.5:free"
+      # Second provider (TokenHarbor mimo fallback)
+      - key: SECOND_PROVIDER_BASE_URL
+        value: "https://tokenharbor.ai/v1"
+      - key: SECOND_PROVIDER_API_KEY
+        sync: false
+      - key: SECOND_PROVIDER_MODEL
+        value: "mimo-v2.5:free"
       - key: WILLHABEN_URL
         value: "https://www.willhaben.at/iad/kaufen-und-verkaufen/zu-verschenken/marktplatz?sfId=188bc8f2-24d3-4bc4-9a7c-acead7e55731&rows=30&isNavigation=true&areaId=900&page=1&PRICE_FROM=0&PRICE_TO=0"
       - key: LOOP_INTERVAL
