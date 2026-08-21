@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import config
 import evaluate
+import filters
 import keep_alive
 import telegram_bot
 import willhaben
@@ -84,12 +85,21 @@ def build_candidate_list(args: argparse.Namespace, verbose: bool = True) -> list
 def process_once(args: argparse.Namespace, seen: set[str], verbose: bool = True) -> int:
     sent = 0
     evaluated = 0
+    filtered = 0
     adverts = build_candidate_list(args, verbose=verbose)
 
     # Newest ads are at the top, so iterate in that order.
     for advert in adverts:
         advert_id = advert["id"]
         if not advert_id or advert_id in seen:
+            continue
+
+        # Drop furniture before spending any LLM tokens on it.
+        if filters.is_furniture(advert):
+            if verbose:
+                print(f"🪑 Пропущено (меблі): {advert['title'][:60]!r}", flush=True)
+            filtered += 1
+            seen.add(advert_id)
             continue
 
         # Cost control: cap the number of LLM calls per run.
@@ -143,6 +153,9 @@ def process_once(args: argparse.Namespace, seen: set[str], verbose: bool = True)
                 sent += count
 
         seen.add(advert_id)
+
+    if verbose and filtered:
+        print(f"🪑 Відфільтровано меблів: {filtered}", flush=True)
 
     # Dry runs shouldn't leave side effects behind.
     if not args.dry_run:
