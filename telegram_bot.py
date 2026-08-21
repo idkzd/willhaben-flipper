@@ -22,26 +22,30 @@ WELCOME = (
     "Привіт! 👋\n"
     "Я надсилатиму сюди безкоштовні речі з willhaben (Відень), які вигідно "
     "перепродати — з оцінкою, чому вигідно, і готовим повідомленням продавцю.\n\n"
-    "Команда: /stop — відписатися"
+    "Команди: /stop — відписатися, /pause — пауза, /resume — продовжити"
 )
 
-HELP_TEXT = "Команди: /start — підписатися, /stop — відписатися"
+HELP_TEXT = (
+    "Команди: /start — підписатися, /stop — відписатися, "
+    "/pause — призупинити парсинг, /resume — продовжити"
+)
 
 _lock = threading.Lock()
 
 
 def _load() -> dict[str, Any]:
     if not STATE_FILE.exists():
-        return {"subscribers": [], "offset": 0}
+        return {"subscribers": [], "offset": 0, "paused": False}
     try:
         data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
-            return {"subscribers": [], "offset": 0}
+            return {"subscribers": [], "offset": 0, "paused": False}
         data.setdefault("subscribers", [])
         data.setdefault("offset", 0)
+        data.setdefault("paused", False)
         return data
     except (ValueError, OSError):
-        return {"subscribers": [], "offset": 0}
+        return {"subscribers": [], "offset": 0, "paused": False}
 
 
 def _save(data: dict[str, Any]) -> None:
@@ -51,6 +55,18 @@ def _save(data: dict[str, Any]) -> None:
 def subscribers() -> list[str]:
     with _lock:
         return list(_load().get("subscribers", []))
+
+
+def is_paused() -> bool:
+    with _lock:
+        return bool(_load().get("paused", False))
+
+
+def set_paused(paused: bool) -> None:
+    with _lock:
+        data = _load()
+        data["paused"] = bool(paused)
+        _save(data)
 
 
 def subscribe(chat_id: str) -> None:
@@ -113,6 +129,21 @@ def _handle_update(update: dict[str, Any], bot_token: str) -> None:
     elif text == "/stop":
         unsubscribe(chat_id)
         _send_text(bot_token, chat_id, "Відписано 👋")
+    elif text == "/pause":
+        set_paused(True)
+        _send_text(
+            bot_token,
+            chat_id,
+            "⏸ Пауза. Бот більше не парсить оголошення й не витрачає токени. "
+            "Надішліть /resume, щоб продовжити.",
+        )
+    elif text == "/resume":
+        set_paused(False)
+        _send_text(
+            bot_token,
+            chat_id,
+            "▶️ Продовжую. Бот знову парсить і оцінює оголошення.",
+        )
     else:
         _send_text(bot_token, chat_id, HELP_TEXT)
 

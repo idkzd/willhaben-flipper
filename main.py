@@ -244,13 +244,20 @@ def main() -> int:
     )
     if not args.dry_run:
         telegram_bot.start_polling(args.telegram_bot_token)
-        print("🤖 Telegram-бот слухає /start та /stop", flush=True)
+        print("🤖 Telegram-бот слухає /start, /stop, /pause, /resume", flush=True)
     try:
         while True:
             try:
-                sent = process_once(args, seen, verbose=False)
-                stamp = time.strftime("%H:%M:%S")
-                print(f"[{stamp}] нових надіслано: {sent}", flush=True)
+                if telegram_bot.is_paused():
+                    stamp = time.strftime("%H:%M:%S")
+                    print(
+                        f"[{stamp}] ⏸ Пауза — пропускаю цикл (токени не витрачаються)",
+                        flush=True,
+                    )
+                else:
+                    sent = process_once(args, seen, verbose=False)
+                    stamp = time.strftime("%H:%M:%S")
+                    print(f"[{stamp}] нових надіслано: {sent}", flush=True)
             except Exception as exc:  # noqa: BLE001 - keep the bot alive no matter what
                 stamp = time.strftime("%H:%M:%S")
                 print(
